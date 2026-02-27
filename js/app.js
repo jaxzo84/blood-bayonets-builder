@@ -257,17 +257,20 @@ const App = (() => {
     if (suppNote) {
       const max = maxSupport();
       const cur = supportCount();
-      suppNote.textContent = `${cur}/${max} Support slots (1 per 2 Core)`;
-      suppNote.style.color = cur > max ? 'var(--crimson)' : 'var(--text-light)';
+      const over = cur > max;
+      suppNote.innerHTML = `<span style="font-family:var(--font-title);font-size:1.05em;color:${over ? 'var(--crimson)' : 'var(--blue-empire)'};">${cur} / ${max}</span> <span style="font-size:0.9em;color:var(--text-light)">support slots used</span>`;
     }
 
     // point guidance
     const pgEl = document.getElementById('point-guidance');
     if (pgEl) {
       pgEl.innerHTML = POINT_GUIDANCE.map(g =>
-        `<div style="display:flex;justify-content:space-between;font-size:0.82em;padding:2px 0;border-bottom:1px solid var(--border-faint)">
-          <span style="color:var(--text-mid)">${g.label}</span>
-          <span style="font-family:var(--font-title);color:var(--blue-empire)">${g.pts}</span>
+        `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.92em;padding:6px 0;border-bottom:1px solid var(--border-faint)">
+          <div>
+            <div style="color:var(--text-dark);font-weight:600">${g.label}</div>
+            <div style="font-size:0.85em;color:var(--text-light);font-style:italic">${g.desc}</div>
+          </div>
+          <span style="font-family:var(--font-title);font-size:1.05em;color:var(--blue-empire);margin-left:8px;flex-shrink:0">${g.pts} pts</span>
         </div>`
       ).join('');
     }
