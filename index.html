@@ -21,56 +21,15 @@
   <!-- SIDEBAR -->
   <aside class="sidebar">
 
-    <!-- Points bar -->
+    <!-- Points bar (static — only values update) -->
     <div class="fp-bar">
       <span class="fp-label">Points</span>
       <div class="fp-track"><div class="fp-fill" id="fp-fill" style="width:0%"></div></div>
       <span class="fp-numbers" id="fp-numbers">0 / 250</span>
     </div>
 
-    <!-- Force Setup -->
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">⚙ Force Setup</div>
-      <div class="sidebar-section-body">
-        <label class="field-label" for="faction-select">Nationality / Faction</label>
-        <select id="faction-select"></select>
-
-        <label class="field-label" for="points-limit">Points Limit</label>
-        <input type="number" id="points-limit" value="250" min="50" max="999" step="25">
-
-        <div id="point-guidance" style="margin-top:8px"></div>
-      </div>
-    </div>
-
-    <!-- Commander -->
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">⚜ Commander</div>
-      <div class="sidebar-section-body">
-        <label class="field-label" for="commander-select">Select Commander</label>
-        <select id="commander-select">
-          <option value="">— Select —</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- Support Availability -->
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">📊 Army Composition</div>
-      <div class="sidebar-section-body">
-        <div id="support-note" class="faction-info-text">0/0 Support slots</div>
-        <div class="faction-info-text" style="margin-top:6px;font-size:0.8em">
-          1 Support unit per every 2 Core units
-        </div>
-      </div>
-    </div>
-
-    <!-- Faction Rules -->
-    <div class="sidebar-section">
-      <div class="sidebar-section-title">📜 Faction Rules &amp; Allies</div>
-      <div class="sidebar-section-body faction-rules-box" id="faction-rules-content">
-        <em style="color:var(--text-light);font-size:0.88em">Select a faction above.</em>
-      </div>
-    </div>
+    <!-- All sidebar sections rendered by JS into this div -->
+    <div id="sidebar-inner"></div>
 
   </aside>
 

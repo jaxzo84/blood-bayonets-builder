@@ -204,76 +204,93 @@ const App = (() => {
 
   // ─── RENDER SIDEBAR ───────────────────────────────────────
   function renderSidebar() {
-    // faction select
-    const fSelect = document.getElementById('faction-select');
-    if (fSelect) {
-      const val = fSelect.value;
-      if (!val) {
-        fSelect.innerHTML = Object.values(FACTIONS).map(f =>
-          `<option value="${f.id}">${f.name}</option>`
-        ).join('');
-      }
-      fSelect.value = State.factionId;
-    }
-
-    // points limit
-    const plInput = document.getElementById('points-limit');
-    if (plInput) plInput.value = State.pointsLimit;
-
-    // points bar
+    const f = faction();
     const total = totalCost();
     const pct = Math.min(100, (total / State.pointsLimit) * 100);
     const over = total > State.pointsLimit;
+
+    // Points bar — just update values, don't replace elements
     const fill = document.getElementById('fp-fill');
     const nums = document.getElementById('fp-numbers');
     if (fill) { fill.style.width = pct + '%'; fill.classList.toggle('over', over); }
     if (nums) { nums.textContent = `${total} / ${State.pointsLimit} pts`; nums.classList.toggle('over', over); }
 
-    // Commander select
-    const f = faction();
-    const cmdSel = document.getElementById('commander-select');
-    if (cmdSel) {
-      cmdSel.innerHTML = '<option value="">— Select Commander —</option>' +
-        f.commanders.map(c => `<option value="${c.id}">${c.name} (${c.pts} pts)</option>`).join('');
-      cmdSel.value = State.commanderId || '';
-    }
+    // Re-render the entire sidebar innerHTML so all selects stay in sync
+    const sidebar = document.getElementById('sidebar-inner');
+    if (!sidebar) return;
 
-    // faction rules
-    const rulesBox = document.getElementById('faction-rules-content');
-    if (rulesBox) {
-      if (f.forceRules?.length) {
-        rulesBox.innerHTML = `
-          <div class="faction-info-text" style="margin-bottom:6px;font-style:italic">${f.description || ''}</div>
-          <ul>${f.forceRules.map(r => `<li>${r}</li>`).join('')}</ul>
-          ${f.allies?.length ? `<div class="faction-info-text" style="margin-top:8px;font-weight:600">Allies:</div><ul>${f.allies.map(a=>`<li>${a}</li>`).join('')}</ul>` : ''}
-        `;
-      } else {
-        rulesBox.innerHTML = '<em style="color:var(--text-light);font-size:0.88em">Select a faction above.</em>';
-      }
-    }
+    const factionOptions = Object.values(FACTIONS).map(fc =>
+      `<option value="${fc.id}" ${fc.id === State.factionId ? 'selected' : ''}>${fc.name}</option>`
+    ).join('');
 
-    // support availability
-    const suppNote = document.getElementById('support-note');
-    if (suppNote) {
-      const max = maxSupport();
-      const cur = supportCount();
-      const over = cur > max;
-      suppNote.innerHTML = `<span style="font-family:var(--font-title);font-size:1.05em;color:${over ? 'var(--crimson)' : 'var(--blue-empire)'};">${cur} / ${max}</span> <span style="font-size:0.9em;color:var(--text-light)">support slots used</span>`;
-    }
-
-    // point guidance
-    const pgEl = document.getElementById('point-guidance');
-    if (pgEl) {
-      pgEl.innerHTML = POINT_GUIDANCE.map(g =>
-        `<div style="display:flex;justify-content:space-between;align-items:center;font-size:0.92em;padding:6px 0;border-bottom:1px solid var(--border-faint)">
-          <div>
-            <div style="color:var(--text-dark);font-weight:600">${g.label}</div>
-            <div style="font-size:0.85em;color:var(--text-light);font-style:italic">${g.desc}</div>
-          </div>
-          <span style="font-family:var(--font-title);font-size:1.05em;color:var(--blue-empire);margin-left:8px;flex-shrink:0">${g.pts} pts</span>
-        </div>`
+    const commanderOptions = '<option value="">— Select Commander —</option>' +
+      f.commanders.map(c =>
+        `<option value="${c.id}" ${c.id === State.commanderId ? 'selected' : ''}>${c.name} (${c.pts} pts)</option>`
       ).join('');
-    }
+
+    const maxSup = maxSupport();
+    const curSup = supportCount();
+    const supOver = curSup > maxSup;
+
+    const pointGuidance = POINT_GUIDANCE.map(g =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border-faint)">
+        <div>
+          <div style="font-size:0.95em;color:var(--text-dark);font-weight:600">${g.label}</div>
+          <div style="font-size:0.82em;color:var(--text-light);font-style:italic">${g.desc}</div>
+        </div>
+        <span style="font-family:var(--font-title);font-size:1em;color:var(--blue-empire);margin-left:8px;flex-shrink:0">${g.pts} pts</span>
+      </div>`
+    ).join('');
+
+    const factionRulesHtml = f.forceRules?.length
+      ? `<div class="faction-info-text" style="margin-bottom:10px;font-style:italic">${f.description || ''}</div>
+         <ul>${f.forceRules.map(r => `<li>${r}</li>`).join('')}</ul>
+         ${f.allies?.length ? `<div class="faction-info-text" style="margin-top:12px;font-weight:600;font-style:normal">Allies:</div><ul>${f.allies.map(a=>`<li>${a}</li>`).join('')}</ul>` : ''}`
+      : '<em style="color:var(--text-light)">Select a faction above.</em>';
+
+    sidebar.innerHTML = `
+      <!-- Force Setup -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">⚙ Force Setup</div>
+        <div class="sidebar-section-body">
+          <label class="field-label" for="faction-select">Nationality / Faction</label>
+          <select id="faction-select" onchange="App.setFaction(this.value)">${factionOptions}</select>
+
+          <label class="field-label" for="points-limit">Points Limit</label>
+          <input type="number" id="points-limit" value="${State.pointsLimit}" min="50" max="999" step="25"
+            onchange="App.setPointsLimit(this.value)" oninput="App.setPointsLimit(this.value)">
+
+          <div style="margin-top:12px">${pointGuidance}</div>
+        </div>
+      </div>
+
+      <!-- Commander -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">⚜ Commander</div>
+        <div class="sidebar-section-body">
+          <label class="field-label" for="commander-select">Select Commander</label>
+          <select id="commander-select" onchange="App.setCommander(this.value || null)">${commanderOptions}</select>
+        </div>
+      </div>
+
+      <!-- Army Composition -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">📊 Army Composition</div>
+        <div class="sidebar-section-body">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
+            <span style="font-family:var(--font-title);font-size:1.3em;color:${supOver ? 'var(--crimson)' : 'var(--blue-empire)'};">${curSup} / ${maxSup}</span>
+            <span style="font-size:0.92em;color:var(--text-light)">support slots used</span>
+          </div>
+          <div style="font-size:0.88em;color:var(--text-light);font-style:italic">1 Support unit per every 2 Core units</div>
+        </div>
+      </div>
+
+      <!-- Faction Rules -->
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">📜 Faction Rules &amp; Allies</div>
+        <div class="sidebar-section-body faction-rules-box">${factionRulesHtml}</div>
+      </div>
+    `;
   }
 
   // ─── RENDER MAIN PANEL ────────────────────────────────────
@@ -637,30 +654,7 @@ const App = (() => {
 
   // ─── INIT ─────────────────────────────────────────────────
   function init() {
-    // Faction select
-    const fSelect = document.getElementById('faction-select');
-    if (fSelect) {
-      fSelect.innerHTML = Object.values(FACTIONS).map(f =>
-        `<option value="${f.id}">${f.name}</option>`
-      ).join('');
-      fSelect.value = State.factionId;
-      fSelect.addEventListener('change', () => setFaction(fSelect.value));
-    }
-
-    // Points limit
-    const plInput = document.getElementById('points-limit');
-    if (plInput) {
-      plInput.value = State.pointsLimit;
-      plInput.addEventListener('change', () => setPointsLimit(plInput.value));
-    }
-
-    // Commander select
-    const cmdSel = document.getElementById('commander-select');
-    if (cmdSel) {
-      cmdSel.addEventListener('change', () => setCommander(cmdSel.value||null));
-    }
-
-    // Modal close
+    // Modal close (these are static elements, safe to bind once)
     document.getElementById('modal-close-btn')?.addEventListener('click', closeModal);
     document.getElementById('unit-modal')?.addEventListener('click', e => {
       if (e.target === document.getElementById('unit-modal')) closeModal();
@@ -681,6 +675,9 @@ const App = (() => {
     toggleVeteran,
     toggleUpgrade,
     toggleCommanderOption,
+    setFaction,
+    setPointsLimit,
+    setCommander,
     exportTXT,
     exportPDF,
     clearForce,
