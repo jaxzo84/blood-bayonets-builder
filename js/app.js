@@ -230,25 +230,43 @@ const App = (() => {
     const f = faction();
     const titleEl = document.getElementById('modal-title');
     const bodyEl = document.getElementById('modal-body');
-    titleEl.textContent = _modalType === 'core' ? '— Add Core Unit —' : '— Add Support Unit —';
+    const isCavCmd = isCavalryCommander();
 
-    const units = _modalType === 'core' ? (f.core||[]) : (f.support||[]);
+    // When cavalry commander: core modal shows normal core + cavalry support units
+    // Support modal shows only non-cavalry support units
+    let units, title;
+    if (_modalType === 'core') {
+      const coreUnits = (f.core || []).map(d => ({ d, cls: 'core-unit', label: '' }));
+      const cavUnits = isCavCmd
+        ? (f.support || []).filter(d => d.isCavalry).map(d => ({ d, cls: 'core-unit', label: ' (Cavalry — counts as Core)' }))
+        : [];
+      units = [...coreUnits, ...cavUnits];
+      title = isCavCmd ? '— Add Core Unit (incl. Cavalry) —' : '— Add Core Unit —';
+    } else {
+      // Support modal: exclude cavalry when cavalry commander (they're shown in core modal)
+      units = (f.support || [])
+        .filter(d => !(isCavCmd && d.isCavalry))
+        .map(d => ({ d, cls: 'support-unit', label: '' }));
+      title = '— Add Support Unit —';
+    }
+
+    titleEl.textContent = title;
+
     if (units.length === 0) {
       bodyEl.innerHTML = '<p style="padding:16px;color:var(--text-light);font-style:italic;grid-column:1/-1">No units available.</p>';
       return;
     }
 
-    bodyEl.innerHTML = units.map(d => {
+    bodyEl.innerHTML = units.map(({ d, cls, label }) => {
       const costLabel = d.isArtillery
         ? `${d.costPerCrew} pts (crew)`
         : `${d.costPerModel} pts/model`;
       const statsLine = d.isArtillery
         ? `${d.shoot} Shoot · ${d.melee} Melee · Resolve ${d.resolve} · ${d.experience}`
         : `${d.shoot} Shoot · ${d.melee} Melee · Resolve ${d.resolve} · ${d.experience} · ${d.minSize}–${d.maxSize} models`;
-      const cls = _modalType === 'support' ? 'support-unit' : 'core-unit';
       return `
         <button class="unit-select-btn ${cls}" onclick="App.addUnitAndClose('${d.id}')">
-          <span class="usb-name">${d.name}</span>
+          <span class="usb-name">${d.name}${label ? `<span style="font-size:0.78em;color:var(--gold);margin-left:6px">${label}</span>` : ''}</span>
           <span class="usb-cost">${costLabel}</span>
           <span class="usb-stats">${statsLine}</span>
           ${d.special?.length ? `<span class="usb-stats" style="margin-top:2px;font-style:italic">${d.special.join(' · ')}</span>` : ''}
