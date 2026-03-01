@@ -273,3 +273,10 @@ label.field-label:first-child { margin-top: 0; }
   .site-title { font-size: 1.7em; }
   .modal-body { grid-template-columns: 1fr; }
 }
+
+/* sidebar-inner flex container */
+#sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}

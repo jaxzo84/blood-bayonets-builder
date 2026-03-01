@@ -8,8 +8,9 @@ const App = (() => {
     factionId: 'british_army',
     pointsLimit: 250,
     commanderId: null,
-    commanderOptions: {}, // keyed by optionText -> bool
-    units: [], // [{ uid, unitId, qty, cannonType, isVeteran, upgrades:{officer,musician,standard} }]
+    commanderOptions: {},   // keyed by optionText -> bool
+    commanderUpgrades: { musician: false, standard: false, aideDeCamp: false },
+    units: [], // [{ uid, unitId, qty, cannonType, isVeteran, isTrained, upgrades:{officer,musician,standard} }]
     nextUid: 1,
   };
 
@@ -22,15 +23,40 @@ const App = (() => {
     const cmd = f.commanders.find(c => c.id === State.commanderId);
     if (!cmd) return 0;
     let pts = cmd.pts;
-    // Mount option
     if (State.commanderOptions['Mount Commander (+4 pts)']) pts += 4;
     if (State.commanderOptions['Upgrade to Veteran (+4 pts)']) pts += 4;
+    // Commander unit upgrades (double the infantryman cost = 2*3=6 each for standard commanders)
+    const modelCost = cmd.unitModelCost || 3;
+    if (State.commanderUpgrades.musician) pts += modelCost * 2;
+    if (State.commanderUpgrades.standard) pts += modelCost * 2;
+    if (State.commanderUpgrades.aideDeCamp) pts += modelCost * 2;
     return pts;
   }
 
   function unitData(u) {
     const f = faction();
     return [...(f.core||[]), ...(f.support||[])].find(d => d.id === u.unitId);
+  }
+
+  // Is the selected commander a Cavalry Commander?
+  function isCavalryCommander() {
+    if (!State.commanderId) return false;
+    const f = faction();
+    const cmd = f.commanders.find(c => c.id === State.commanderId);
+    return cmd?.isCavalryCmd === true;
+  }
+
+  // When a Cavalry Commander is chosen, cavalry support units count as Core
+  function effectiveType(u) {
+    const f = faction();
+    const d = unitData(u);
+    if (!d) return 'unknown';
+    const isCoreUnit = f.core?.some(c => c.id === u.unitId);
+    if (isCoreUnit) return 'core';
+    const isSuppUnit = f.support?.some(s => s.id === u.unitId);
+    if (isSuppUnit && isCavalryCommander() && d.isCavalry) return 'core'; // counts as core
+    if (isSuppUnit) return 'support';
+    return 'unknown';
   }
 
   function unitCost(u) {
@@ -45,6 +71,14 @@ const App = (() => {
       }
     } else {
       pts = d.costPerModel * u.qty;
+      // Trained upgrade for inexperienced units (+1 pt/model)
+      if (u.isTrained && d.trainedCost) {
+        pts += d.trainedCost * u.qty;
+      }
+      // Downgrade for militia (-1 pt/model, half pikes)
+      if (u.isDowngraded && d.downgradeCost) {
+        pts += d.downgradeCost * u.qty; // negative value
+      }
       // upgrades (each is double model cost)
       const upgCost = d.costPerModel * 2;
       if (u.upgrades.officer) pts += upgCost;
@@ -64,14 +98,10 @@ const App = (() => {
   }
 
   function coreCount() {
-    const f = faction();
-    const coreIds = new Set((f.core||[]).map(d => d.id));
-    return State.units.filter(u => coreIds.has(u.unitId)).length;
+    return State.units.filter(u => effectiveType(u) === 'core').length;
   }
   function supportCount() {
-    const f = faction();
-    const suppIds = new Set((f.support||[]).map(d => d.id));
-    return State.units.filter(u => suppIds.has(u.unitId)).length;
+    return State.units.filter(u => effectiveType(u) === 'support').length;
   }
   function maxSupport() { return Math.floor(coreCount() / 2); }
 
@@ -106,6 +136,7 @@ const App = (() => {
   function setCommander(id) {
     State.commanderId = id;
     State.commanderOptions = {};
+    State.commanderUpgrades = { musician: false, standard: false, aideDeCamp: false };
     render();
   }
   function toggleCommanderOption(opt) {
@@ -122,6 +153,8 @@ const App = (() => {
       qty: d.minSize || 1,
       cannonType: d.cannonUpgrades ? d.cannonUpgrades[0] : null,
       isVeteran: false,
+      isTrained: false,
+      isDowngraded: false,
       upgrades: { officer: false, musician: false, standard: false },
     });
     render();
@@ -146,7 +179,35 @@ const App = (() => {
     const u = State.units.find(x => x.uid === uid);
     if (!u) return;
     const d = unitData(u);
-    if (d && d.vetCost) { u.isVeteran = !u.isVeteran; render(); }
+    if (d && d.vetCost) {
+      u.isVeteran = !u.isVeteran;
+      if (u.isVeteran) { u.isTrained = false; u.isDowngraded = false; }
+      render();
+    }
+  }
+  function toggleTrained(uid) {
+    const u = State.units.find(x => x.uid === uid);
+    if (!u) return;
+    const d = unitData(u);
+    if (d && d.trainedCost !== undefined) {
+      u.isTrained = !u.isTrained;
+      if (u.isTrained) { u.isVeteran = false; u.isDowngraded = false; }
+      render();
+    }
+  }
+  function toggleDowngrade(uid) {
+    const u = State.units.find(x => x.uid === uid);
+    if (!u) return;
+    const d = unitData(u);
+    if (d && d.downgradeCost !== undefined) {
+      u.isDowngraded = !u.isDowngraded;
+      if (u.isDowngraded) { u.isVeteran = false; u.isTrained = false; }
+      render();
+    }
+  }
+  function toggleCommanderUpgrade(key) {
+    State.commanderUpgrades[key] = !State.commanderUpgrades[key];
+    render();
   }
   function toggleUpgrade(uid, key) {
     const u = State.units.find(x => x.uid === uid);
@@ -311,21 +372,22 @@ const App = (() => {
     // Commander
     html += renderCommanderSection();
 
-    // Core units
-    const coreUnits = State.units.filter(u => f.core?.some(d => d.id === u.unitId));
+    // Core units — includes cavalry support reclassified as core under Cavalry Commander
+    const coreUnits = State.units.filter(u => effectiveType(u) === 'core');
+    const cavNote = isCavalryCommander() ? ' <span style="font-size:0.75em;color:var(--gold);font-style:italic">(Cavalry Commander: cavalry units count as Core)</span>' : '';
     html += `<div class="section-header">
-      <span class="section-title">Core Units</span>
+      <span class="section-title">Core Units${cavNote}</span>
       <hr class="section-hr">
       <button class="section-add-btn" onclick="App.openModal('core')">+ Add Unit</button>
     </div>`;
     if (coreUnits.length === 0) {
       html += `<div class="empty-state"><span class="em-icon">⚔</span>No core units added yet. Every force needs at least one.</div>`;
     } else {
-      html += coreUnits.map(u => renderUnitRow(u, 'core')).join('');
+      html += coreUnits.map(u => renderUnitRow(u, f.core?.some(d=>d.id===u.unitId)?'core':'support')).join('');
     }
 
-    // Support units
-    const suppUnits = State.units.filter(u => f.support?.some(d => d.id === u.unitId));
+    // Support units — true support only
+    const suppUnits = State.units.filter(u => effectiveType(u) === 'support');
     const maxSup = maxSupport();
     const supOver = suppUnits.length > maxSup;
     html += `<div class="section-header" style="margin-top:20px">
@@ -387,7 +449,7 @@ const App = (() => {
     if (cmd.special?.length) {
       html += `<div class="commander-special">${cmd.special.map(s => `<span class="rule-tag" data-tooltip="${SPECIAL_RULES_GLOSSARY[s]||s}">${s}</span>`).join('')}</div>`;
     }
-    // options
+    // Personal options (mount, veteran)
     if (cmd.options?.length && !cmd.isAttachment) {
       html += `<div class="commander-options">`;
       cmd.options.forEach(opt => {
@@ -395,6 +457,21 @@ const App = (() => {
         html += `<button class="toggle-btn ${active?'active':''}" onclick="App.toggleCommanderOption('${opt.replace(/'/g,"\\'")}')">${opt}</button>`;
       });
       html += `</div>`;
+    }
+    // Commander unit upgrades (musician, standard bearer, aide-de-camp)
+    // These cost double the base model cost of the unit's infantrymen (3 pts → 6 pts each)
+    if (!cmd.isAttachment && !cmd.isNavy) {
+      const modelCost = cmd.unitModelCost || 3;
+      const upgCost = modelCost * 2;
+      html += `<div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border-faint)">
+        <div style="font-family:var(--font-title);font-size:0.68em;letter-spacing:2px;text-transform:uppercase;color:var(--text-light);margin-bottom:6px">Unit Upgrades</div>
+        <div class="commander-options">
+          <button class="toggle-btn ${State.commanderUpgrades.musician?'active':''}" onclick="App.toggleCommanderUpgrade('musician')">Musician (+${upgCost} pts)</button>
+          <button class="toggle-btn ${State.commanderUpgrades.standard?'active':''}" onclick="App.toggleCommanderUpgrade('standard')">Standard Bearer (+${upgCost} pts)</button>
+          <button class="toggle-btn ${State.commanderUpgrades.aideDeCamp?'active':''}" onclick="App.toggleCommanderUpgrade('aideDeCamp')">Aide-de-Camp (+${upgCost} pts)</button>
+        </div>
+        <div style="font-size:0.78em;color:var(--text-light);font-style:italic;margin-top:5px">Each upgrade replaces one infantryman (model cannot shoot but can fight in melee)</div>
+      </div>`;
     }
     if (cmd.isNamed && cmd.isAttachment) {
       html += `<div class="commander-desc">Attaches to: ${cmd.attachTo}</div>`;
@@ -407,10 +484,12 @@ const App = (() => {
     const d = unitData(u);
     if (!d) return '';
     const cost = unitCost(u);
+    const effType = effectiveType(u);
+    const typeBadgeLabel = effType === 'core' && typeClass === 'support' ? 'core (cav.)' : effType;
     let html = `<div class="unit-row">
       <div class="unit-row-header">
         <span class="unit-name">${d.name}</span>
-        <span class="unit-type-badge ${typeClass}">${typeClass}</span>
+        <span class="unit-type-badge ${effType}">${typeBadgeLabel}</span>
         <span class="unit-cost-badge">${cost} pts</span>
         <button class="unit-remove-btn" onclick="App.removeUnit(${u.uid})" title="Remove unit">✕</button>
       </div>
@@ -473,20 +552,35 @@ const App = (() => {
         upgradeOptions.push({ key:'standard', label:`Standard Bearer (+${d.costPerModel*2} pts)` });
     }
 
-    if (upgradeOptions.length || d.vetCost) {
+    const hasUpgrades = upgradeOptions.length || d.vetCost || d.trainedCost !== undefined || d.downgradeCost !== undefined;
+    if (hasUpgrades) {
       html += `<div class="upgrades-row">`;
       upgradeOptions.forEach(opt => {
         html += `<button class="toggle-btn ${u.upgrades[opt.key]?'active':''}" onclick="App.toggleUpgrade(${u.uid},'${opt.key}')">${opt.label}</button>`;
       });
-      if (d.vetCost) {
-        const vetLabel = d.isArtillery ? `Veteran (+${d.vetCost} pts)` : `Veteran (+${d.vetCost} pt/model)`;
+      // Veteran toggle
+      if (d.vetCost && !u.isTrained && !u.isDowngraded) {
+        const vetLabel = d.isArtillery ? `★ Veteran (+${d.vetCost} pts)` : `★ Veteran (+${d.vetCost} pt/model)`;
         html += `<button class="toggle-btn ${u.isVeteran?'active':''}" onclick="App.toggleVeteran(${u.uid})">${vetLabel}</button>`;
+      }
+      // Trained toggle (for Inexperienced units with Poor Leadership)
+      if (d.trainedCost !== undefined && !u.isVeteran && !u.isDowngraded) {
+        html += `<button class="toggle-btn ${u.isTrained?'active':''}" onclick="App.toggleTrained(${u.uid})" style="${u.isTrained?'':'border-color:#c8963e;color:#8b6914'}">
+          ↑ Upgrade to Trained (+${d.trainedCost} pt/model)
+        </button>`;
+      }
+      // Downgrade toggle (militia half-pikes)
+      if (d.downgradeCost !== undefined && !u.isVeteran && !u.isTrained) {
+        html += `<button class="toggle-btn ${u.isDowngraded?'active':''}" onclick="App.toggleDowngrade(${u.uid})" style="${u.isDowngraded?'':'border-color:var(--crimson);color:var(--crimson)'}">
+          ↓ Downgrade to Half Pikes (${d.downgradeCost} pt/model)
+        </button>`;
       }
       html += `</div>`;
     }
-
-    if (d.trainedUpgrade) {
-      html += `<div style="font-size:0.78em;color:var(--blue-empire);font-style:italic;padding-top:2px">Upgrade: ${d.trainedUpgrade}</div>`;
+    // Show what the trained/vet upgrade actually does
+    if (d.trainedCost !== undefined) {
+      const effect = d.trainedEffect || 'Loses Poor Leadership, gains Battle Hardened';
+      html += `<div style="font-size:0.8em;color:var(--blue-empire);font-style:italic;padding-top:2px">Trained upgrade: ${effect}</div>`;
     }
     if (d.notes) {
       html += `<div style="font-size:0.78em;color:var(--text-light);font-style:italic">${d.notes}</div>`;
@@ -527,6 +621,8 @@ const App = (() => {
       if (d.isArtillery) out += `  Crew · ${d.experience} · ${d.composition}\n`;
       else out += `  ${u.qty} models · ${d.experience} · Shoot ${d.shoot} · Melee ${d.melee}\n`;
       if (u.isVeteran) out += `  + Veteran\n`;
+      if (u.isTrained) out += `  + Upgraded to Trained\n`;
+      if (u.isDowngraded) out += `  + Downgraded to Half Pikes\n`;
       const ups = [u.upgrades.officer?'Officer/N.C.O.':'',u.upgrades.musician?'Musician':'',u.upgrades.standard?'Standard Bearer':''].filter(Boolean);
       if (ups.length) out += `  Upgrades: ${ups.join(', ')}\n`;
       out += '\n';
@@ -542,6 +638,8 @@ const App = (() => {
       if (!d.isHowitzer && !d.isRocket && u.cannonType) out += ` · ${CANNON_TYPES[u.cannonType].name}`;
       out += '\n';
       if (u.isVeteran) out += `  + Veteran\n`;
+      if (u.isTrained) out += `  + Upgraded to Trained\n`;
+      if (u.isDowngraded) out += `  + Downgraded to Half Pikes\n`;
       const ups = [u.upgrades.officer?'Officer/N.C.O.':'',u.upgrades.musician?'Musician':'',u.upgrades.standard?'Standard Bearer':''].filter(Boolean);
       if (ups.length) out += `  Upgrades: ${ups.join(', ')}\n`;
       out += '\n';
@@ -673,8 +771,11 @@ const App = (() => {
     changeQty,
     setCannonType,
     toggleVeteran,
+    toggleTrained,
+    toggleDowngrade,
     toggleUpgrade,
     toggleCommanderOption,
+    toggleCommanderUpgrade,
     setFaction,
     setPointsLimit,
     setCommander,
