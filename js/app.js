@@ -401,7 +401,7 @@ const App = (() => {
     if (coreUnits.length === 0) {
       html += `<div class="empty-state"><span class="em-icon">⚔</span>No core units added yet. Every force needs at least one.</div>`;
     } else {
-      html += coreUnits.map(u => renderUnitRow(u, effectiveType(u))).join('');
+      html += coreUnits.map(u => renderUnitRow(u, f.core?.some(d=>d.id===u.unitId)?'core':'support')).join('');
     }
 
     // Support units — true support only
@@ -628,8 +628,8 @@ const App = (() => {
     }
     out += '\n';
 
-    const coreUnits = State.units.filter(u => effectiveType(u) === 'core');
-    const suppUnits = State.units.filter(u => effectiveType(u) === 'support');
+    const coreUnits = State.units.filter(u => f.core?.some(d => d.id === u.unitId));
+    const suppUnits = State.units.filter(u => f.support?.some(d => d.id === u.unitId));
 
     out += `CORE UNITS (${coreUnits.length})\n${'-'.repeat(40)}\n`;
     coreUnits.forEach(u => {
@@ -675,8 +675,8 @@ const App = (() => {
   function exportPDF() {
     const f = faction();
     const cmd = f.commanders.find(c => c.id === State.commanderId);
-    const coreUnits = State.units.filter(u => effectiveType(u) === 'core');
-    const suppUnits = State.units.filter(u => effectiveType(u) === 'support');
+    const coreUnits = State.units.filter(u => f.core?.some(d => d.id === u.unitId));
+    const suppUnits = State.units.filter(u => f.support?.some(d => d.id === u.unitId));
 
     const w = window.open('', '_blank');
     w.document.write(`<!DOCTYPE html><html><head><title>Blood &amp; Bayonets — Force Roster</title>
